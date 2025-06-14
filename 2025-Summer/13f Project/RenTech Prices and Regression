@@ -1,0 +1,95 @@
+import pandas as pd
+import yfinance as yf
+from datetime import timedelta
+import statsmodels.api as sm
+import numpy as np
+import re
+import time
+import os
+
+# Load holdings CSV
+input_csv_path = '/Users/albertredmann/VS Code/Git/Finance Projects/13f/Tests/RenTech_top50_values.csv'
+df = pd.read_csv(input_csv_path, index_col=0, parse_dates=True)
+
+
+df = df.drop(columns=['QUARTER'], errors='ignore')  # Drop known non-ticker columns
+df = df.loc[:, [col for col in df.columns if re.fullmatch(r'[A-Z]{1,5}', col)]]
+
+dates = df.index
+tickers = df.columns.tolist()
+
+print(f'yfinance version:'+yf.__version__)
+
+
+# Calculate percentage change in shares compared to previous quarter
+df_sorted = df.sort_index()
+shares_diff = df_sorted.pct_change().fillna(0)
+
+# Download Stock Price Data and calculate change around the filing dates
+print("Downloading data in batches")
+all_data = {}
+batch_size = 10 # Make sure to have the latest yfinance version installed as older versions produced too many request errors for me. Script prints your installed version
+
+for i in range(0, len(tickers), batch_size):
+    batch = tickers[i:i+batch_size]
+    print(f"Fetching batch {i//batch_size + 1}: {batch}")
+    try:
+        batch_data = yf.download(
+            tickers=batch,
+            start=(dates.min() - timedelta(days=10)).strftime('%Y-%m-%d'),
+            end=(dates.max() + timedelta(days=10)).strftime('%Y-%m-%d'),
+            group_by='ticker',
+            auto_adjust=False,
+            progress=False,
+            threads=True
+        )
+        for ticker in batch:
+            if ticker in batch_data.columns.levels[0]:
+                all_data[ticker] = batch_data[ticker].dropna()
+            else:
+                print(f"No data returned for {ticker}.")
+    except Exception as e:
+        print(f"Error downloading batch {batch}: {e}")
+    time.sleep(1)
+
+# Calculate price changes
+price_changes = pd.DataFrame(index=dates, columns=tickers, dtype=float)
+
+for ticker in tickers:
+    data = all_data.get(ticker)
+    if data is None or data.empty:
+        print(f"Skipping {ticker} — no data.")
+        continue
+    for date in dates:
+        prev_data = data[data.index < date]
+        next_data = data[data.index > date]
+        if prev_data.empty or next_data.empty:
+            continue
+        prev_day = prev_data.iloc[0]  # Last before date
+        next_day = next_data.iloc[+1]   # First after date
+        try:
+            change = (next_day['Close'] - next_day['Open']) / next_day['Open'] * 100
+            price_changes.loc[date, ticker] = change
+        except Exception as e:
+            print(f"Error for {ticker} on {date.date()}: {e}")
+
+
+# Convert price_changes to long format
+price_changes_long = price_changes.stack().reset_index()
+price_changes_long.columns = ['Date', 'Ticker', 'Pct_Change']
+
+# Convert shares_diff to long format
+shares_diff_long = shares_diff.stack().reset_index()
+shares_diff_long.columns = ['Date', 'Ticker', 'Shares_Change']
+
+# Merge price changes with shares change on Date and Ticker
+merged = pd.merge(price_changes_long, shares_diff_long, on=['Date', 'Ticker']).dropna()
+
+# Regression Model
+X = sm.add_constant(merged[['Shares_Change']])
+y = merged['Pct_Change']
+
+model = sm.OLS(y, X).fit()
+print(model.summary())
+
+
