@@ -1,0 +1,90 @@
+import yfinance as yf
+import pandas as pd
+from datetime import datetime
+
+# -------------------------------
+# PART 1: Correlation Between MSTR and BTC
+# -------------------------------
+
+# Define tickers
+mstr_ticker = "MSTR"
+btc_ticker = "BTC-USD"
+
+# Load MicroStrategy data
+mstr = yf.Ticker(mstr_ticker)
+
+# Fetch historical earnings dates
+earnings_df = mstr.earnings_dates
+
+# Ensure index is DatetimeIndex and remove timezone if present
+if isinstance(earnings_df.index, pd.DatetimeIndex):
+    if earnings_df.index.tz is not None:
+        earnings_df.index = earnings_df.index.tz_convert(None)
+
+# Filter out future earnings dates
+earnings_df = earnings_df[earnings_df.index < pd.Timestamp(datetime.today())]
+
+
+# Sort dates in ascending order (oldest to newest)
+earnings_df = earnings_df.sort_index()
+
+# Check if there are at least two historical earnings
+if len(earnings_df) < 2:
+    raise ValueError("Not enough historical earnings dates found.")
+
+# Select the last two earnings dates
+last_two_earnings = earnings_df.tail(2)
+start_date = last_two_earnings.index[0].strftime("%Y-%m-%d")
+end_date = last_two_earnings.index[1].strftime("%Y-%m-%d")
+
+print(f"\nAnalyzing price correlation from {start_date} to {end_date}")
+
+# Download historical price data between earnings dates
+mstr_prices = yf.download(mstr_ticker, start=start_date, end=end_date)
+btc_prices = yf.download(btc_ticker, start=start_date, end=end_date)
+
+# Check if data was returned
+if mstr_prices.empty or btc_prices.empty:
+    raise ValueError("One of the price datasets is empty. Verify ticker symbols and date range.")
+
+# Align and join on date index
+price_data = pd.concat([
+    mstr_prices["Close"].rename("MSTR"),
+    btc_prices["Close"].rename("BTC")
+], axis=1).dropna()
+
+# Check for empty overlap
+if price_data.empty:
+    raise ValueError("No overlapping data between MSTR and BTC in selected range.")
+
+# Compute correlation
+correlation = price_data["MSTR"].corr(price_data["BTC"])
+print(f"Correlation between MSTR and BTC: {correlation:.4f}")
+
+# -------------------------------
+# PART 2: Digital Assets % of Total Assets
+# -------------------------------
+
+print("\nAnalyzing quarterly balance sheet for digital assets...")
+
+# Fetch quarterly balance sheet (already in wide format)
+balance_sheet = mstr.quarterly_balance_sheet.T
+
+# Safely normalize column names without using .str
+balance_sheet.columns = [col.lower().replace(" ", "_") for col in balance_sheet.columns]
+
+# Identify digital assets and total assets columns
+digital_asset_col = next((col for col in balance_sheet.columns if "digital" in col), None)
+total_assets_col = "total_assets"
+
+if digital_asset_col and total_assets_col in balance_sheet.columns:
+    # Calculate % of digital assets
+    balance_sheet["digital_asset_pct"] = (
+        balance_sheet[digital_asset_col] / balance_sheet[total_assets_col]) * 100
+
+    print("\n% of Digital Assets in Total Assets by Quarter:")
+    print(balance_sheet[["digital_asset_pct"]].dropna())
+else:
+    print("❌ Could not find 'digital assets' or 'total assets' in the balance sheet.")
+    print("Available columns:")
+    print(balance_sheet.columns.tolist())
