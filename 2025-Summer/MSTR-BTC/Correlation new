@@ -1,0 +1,48 @@
+import yfinance as yf
+import pandas as pd
+import numpy as np
+
+# Step 1: Download price data
+btc = yf.download("BTC-USD", auto_adjust=True)
+mstr = yf.download("MSTR", auto_adjust=True)
+
+# Align the dates
+prices = pd.concat([mstr['Close'], btc['Close']], axis=1, join='inner')
+prices.columns = ['MSTR', 'BTC']
+
+# Step 2: Get MSTR earnings dates
+ticker = yf.Ticker("MSTR")
+earnings_df = ticker.earnings_dates
+
+# Use only the earnings announcement dates
+earnings_dates = pd.to_datetime(earnings_df.index).tz_localize(None).sort_values()
+
+
+# Remove future dates and keep only those after price data start
+earnings_dates = earnings_dates[(earnings_dates >= prices.index.min()) & (earnings_dates <= prices.index.max())]
+earnings_dates = earnings_dates.to_list()
+
+# Add today's date to end the last period
+earnings_dates.append(pd.to_datetime('today'))
+
+# Step 3: Compute correlation in between earnings dates
+results = []
+
+for i in range(len(earnings_dates) - 1):
+    start = earnings_dates[i]
+    end = earnings_dates[i + 1]
+    mask = (prices.index > start) & (prices.index <= end)
+    subset = prices.loc[mask]
+
+    if len(subset) > 1:
+        corr = subset.corr().iloc[0, 1]
+        results.append({
+            "Start": start.date(),
+            "End": end.date(),
+            "Correlation": corr,
+            "Num Days": len(subset)
+        })
+
+# Output results
+correlation_df = pd.DataFrame(results)
+print(correlation_df)
