@@ -1,0 +1,19 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © qfe-bonn
+
+//@version=6
+indicator("Other intangibles net/Market Cap", shorttitle = "Oth.int/MC", overlay = false)
+
+sym = syminfo.tickerid
+
+// Get balance sheet data
+BTC = request.financial(sym, financial_id = 'OTHER_INTANGIBLES_NET', period = 'FQ') // Bitcoin holdings as of earnings
+shares_outstanding = request.financial(sym, financial_id = 'TOTAL_SHARES_OUTSTANDING', period = 'FQ')
+
+mc = shares_outstanding * close
+btc_mc = BTC / mc
+
+plot(btc_mc, display = display.all)
+// Plot others for control purposes
+plot(BTC, color = color.orange, display = display.none)
+plot(mc, color = color.white, display = display.none)
