@@ -1,0 +1,17 @@
+# Ensure correlation_df is not empty
+if not correlation_df.empty:
+    # Plot the correlation values
+    plt.figure(figsize=(12, 6))
+    plt.bar(correlation_df['Quarter'], correlation_df['Correlation'], color='skyblue')
+
+    # Add labels and title
+    plt.xlabel('Quarter')
+    plt.ylabel('Correlation')
+    plt.title('Correlation Between MSTR and BTC by Quarter')
+    plt.xticks(rotation=45)  # Rotate x-axis labels for better readability
+
+    # Show the plot
+    plt.tight_layout()
+    plt.show()
+else:
+    print("correlation_df is empty. No data to plot.")
