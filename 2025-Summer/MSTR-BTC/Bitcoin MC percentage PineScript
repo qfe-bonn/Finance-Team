@@ -1,0 +1,29 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © qfe-bonn
+
+//@version=6
+indicator("Other intangibles net/Market Cap", shorttitle = "Oth.int/MC", overlay = false)
+
+// Dynamic for currently viewed symbol, indicator can be used on any stock
+sym = syminfo.tickerid
+
+// Get balance sheet data
+freq_btc = input.string('FQ', 'BTC/MC period', ['FQ', 'FY', 'TTM'], display = display.status_line)
+BTC = request.financial(sym, financial_id = 'OTHER_INTANGIBLES_NET', period = freq_btc) // Bitcoin holdings as of earnings
+shares_outstanding = request.financial(sym, financial_id = 'TOTAL_SHARES_OUTSTANDING', period = freq_btc) // Total shares outstanding. Diluted can be used instead to compare
+
+// calculate daily market cap and Bitcoin ratio
+mc = shares_outstanding * close
+btc_mc = BTC / mc
+
+// Calculate Software Business EV by subtracting BTC value from total EV, yearly data may make more sense, easily modified: FQ, FY, TTM
+ev_freq = input.string('FQ', 'EV period', ['FQ', 'FY', 'TTM'], display = display.status_line)
+sw_ev = request.financial(sym, financial_id = 'ENTERPRISE_VALUE', period = ev_freq)-BTC
+
+//plots, software ev does not show by default, can be ticked in indicator setting on the chart
+plot(btc_mc, title = "BTC % MC", color = color.rgb(255, 145, 0), linewidth = 2, style = plot.style_line, display = display.all)
+plot(sw_ev, title = "Software EV", color = color.green, linewidth = 3, style = plot.style_stepline_diamond, display = display.none)
+
+// Plot others for control purposes
+plot(BTC, title = 'Other Intangible Assets', color = color.orange, display = display.none)
+plot(mc, title = 'Market Capitalization', color = color.white, display = display.none)
